@@ -1,0 +1,353 @@
+From 680d5e7bf1fa2e55a0b15681bfe8500001018eac Mon Sep 17 00:00:00 2001
+From: Vasiliy Yorkin <vasiliy.yorkin@gmail.com>
+Date: Sat, 31 Oct 2026 15:04:53 +0300
+Subject: [PATCH 1/2] feat: route direct keybindings by what the pane runs
+
+A direct (prefix-free) binding belongs to Herdr, so the program inside the
+pane never sees that chord. Once a user maps ctrl+h/j/k/l for pane focus,
+full-screen editors and pagers lose those chords themselves, and Herdr had
+no way to hand one back the way tmux's @pane-is-vim does.
+
+Add keys.direct_keys: "herdr" keeps every direct binding, which is the
+default and leaves existing configs alone; "auto" forwards them to the pane
+while its application is on the alternate screen, which is what editors and
+pagers use; "pane" always forwards them. The client decides per keypress, so
+a pane that enters or leaves the alternate screen switches over on the next
+chord without a reload. Prefix mode is unaffected.
+---
+ CHANGELOG.md                                  |  3 +
+ docs/next/CHANGELOG.md                        |  3 +
+ .../src/content/docs/configuration.mdx        | 12 ++++
+ .../website/src/content/docs/keyboard.mdx     |  2 +
+ .../website/src/data/config-reference.json    | 11 ++++
+ src/client/shell/input.rs                     | 34 ++++++++--
+ src/client/shell/tests/input.rs               | 62 +++++++++++++++++++
+ src/config.rs                                 |  8 +--
+ src/config/model.rs                           | 38 ++++++++++++
+ src/main.rs                                   |  5 ++
+ 10 files changed, 169 insertions(+), 9 deletions(-)
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index c0a8e1db..8ff77ed1 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -2,6 +2,9 @@
+ 
+ ## Unreleased
+ 
++### Added
++- `keys.direct_keys` decides who receives prefix-free (direct) keybindings. The values are `herdr` (the default), `auto`, and `pane`. `auto` forwards direct chords to the pane while its application uses the alternate screen, so a full-screen editor keeps its own `ctrl+letter` chords without giving up direct bindings everywhere else.
++
+ ## [0.9.5] - 2026-10-14
+ 
+ This is a hotfix release for v0.9.4. See the v0.9.4 notes for the full feature release: https://github.com/herdrdev/herdr/releases/tag/v0.9.4
+diff --git a/docs/next/CHANGELOG.md b/docs/next/CHANGELOG.md
+index c0a8e1db..8ff77ed1 100644
+--- a/docs/next/CHANGELOG.md
++++ b/docs/next/CHANGELOG.md
+@@ -2,6 +2,9 @@
+ 
+ ## Unreleased
+ 
++### Added
++- `keys.direct_keys` decides who receives prefix-free (direct) keybindings. The values are `herdr` (the default), `auto`, and `pane`. `auto` forwards direct chords to the pane while its application uses the alternate screen, so a full-screen editor keeps its own `ctrl+letter` chords without giving up direct bindings everywhere else.
++
+ ## [0.9.5] - 2026-10-14
+ 
+ This is a hotfix release for v0.9.4. See the v0.9.4 notes for the full feature release: https://github.com/herdrdev/herdr/releases/tag/v0.9.4
+diff --git a/docs/next/website/src/content/docs/configuration.mdx b/docs/next/website/src/content/docs/configuration.mdx
+index 874fe56c..e31bb68b 100644
+--- a/docs/next/website/src/content/docs/configuration.mdx
++++ b/docs/next/website/src/content/docs/configuration.mdx
+@@ -174,6 +174,18 @@ Key strings accept plain keys, modifier combinations such as `ctrl+a`, `shift+n`
+ 
+ If you have old custom keybindings and want the new defaults, run `herdr config reset-keys`. Herdr backs up `config.toml`, removes `[keys]` and `[[keys.command]]`, and uses built-in v2 defaults after restart or `herdr server reload-config`.
+ 
++**Direct bindings inside a pane.** A direct shortcut belongs to Herdr, so the pane's application never sees that chord. That matters when a direct chord is one the application needs itself, for example `ctrl+h` or `ctrl+l` in a full-screen editor. `keys.direct_keys` decides who receives direct bindings:
++
++```toml
++[keys]
++# "herdr" (default): Herdr keeps every direct binding.
++# "auto": a pane whose application is on the alternate screen receives them.
++# "pane": panes always receive them.
++direct_keys = "auto"
++```
++
++`auto` is the useful middle ground: full-screen editors and pagers such as Vim, Neovim, `less`, and `htop` switch to the alternate screen, so they get their own chords back, while shells keep sending direct bindings to Herdr. Panes that never leave the normal screen, such as a plain shell, keep Herdr's behavior. Pressing the prefix always reaches Herdr regardless of this setting.
++
+ ## Indexed jumps
+ 
+ Indexed keybindings use `1..9` in normal keybinding fields:
+diff --git a/docs/next/website/src/content/docs/keyboard.mdx b/docs/next/website/src/content/docs/keyboard.mdx
+index 216de5e9..17e35cc5 100644
+--- a/docs/next/website/src/content/docs/keyboard.mdx
++++ b/docs/next/website/src/content/docs/keyboard.mdx
+@@ -138,3 +138,5 @@ A few `ctrl+alt` chords are taken elsewhere. Avoid these:
+ | `ctrl+alt+f1..f12` | Linux virtual console switching |
+ 
+ If a direct chord does nothing, your terminal or desktop environment consumed it before Herdr could see it. Rebind either side: free the chord in the terminal's settings, or pick another chord in Herdr.
++
++A direct chord belongs to Herdr, so the program inside the pane never sees it. That collides with full-screen editors that use `ctrl+letter` themselves. Set `keys.direct_keys = "auto"` to hand direct chords to a pane while its application is on the alternate screen. The prefix always reaches Herdr either way.
+diff --git a/docs/next/website/src/data/config-reference.json b/docs/next/website/src/data/config-reference.json
+index f06507c1..5faa9a5c 100644
+--- a/docs/next/website/src/data/config-reference.json
++++ b/docs/next/website/src/data/config-reference.json
+@@ -487,6 +487,17 @@
+           "default": "\"ctrl+b\"",
+           "description": "Prefix key(s) to enter prefix mode (e.g. \"ctrl+b\", \"f12\", \"esc\", or an array to accept several)."
+         },
++        {
++          "key": "keys.direct_keys",
++          "type": "enum",
++          "default": "\"herdr\"",
++          "description": "Who receives prefix-free (direct) keybindings. Saved values are \"herdr\", \"auto\", or \"pane\". \"auto\" forwards them to the pane while its application uses the alternate screen. Default: \"herdr\".",
++          "values": [
++            "herdr",
++            "auto",
++            "pane"
++          ]
++        },
+         {
+           "key": "keys.help",
+           "type": "keybinding",
+diff --git a/src/client/shell/input.rs b/src/client/shell/input.rs
+index ee92d590..a82ee290 100644
+--- a/src/client/shell/input.rs
++++ b/src/client/shell/input.rs
+@@ -670,11 +670,13 @@ impl ClientShellState {
+ 
+         match self.mode {
+             ClientShellMode::Terminal => {
+-                if let Some(binding) =
+-                    crate::input::resolve_direct_binding(&self.config.keybinds.keybinds, key)
+-                {
+-                    self.record_binding(binding, outcome);
+-                    return None;
++                if !self.direct_keys_go_to_pane() {
++                    if let Some(binding) =
++                        crate::input::resolve_direct_binding(&self.config.keybinds.keybinds, key)
++                    {
++                        self.record_binding(binding, outcome);
++                        return None;
++                    }
+                 }
+                 if self.config.keybinds.matches_prefix(key) {
+                     self.mode = ClientShellMode::Prefix;
+@@ -1091,6 +1093,28 @@ impl ClientShellState {
+             .and_then(|snapshot| snapshot.focused_pane_id.clone())
+     }
+ 
++    /// Whether the focused pane owns the prefix-free (direct) keybindings instead
++    /// of Herdr, which `keys.direct_keys` decides.
++    pub(super) fn direct_keys_go_to_pane(&self) -> bool {
++        let Some(pane_id) = self.focused_pane_id() else {
++            return false;
++        };
++        match self.config.local_keys.direct_keys {
++            crate::config::DirectKeysRouting::Herdr => false,
++            crate::config::DirectKeysRouting::Pane => true,
++            crate::config::DirectKeysRouting::Auto => {
++                self.focused_pane_uses_alternate_screen(&pane_id)
++            }
++        }
++    }
++
++    fn focused_pane_uses_alternate_screen(&self, pane_id: &str) -> bool {
++        self.pane_surface
++            .as_ref()
++            .and_then(|surface| surface.panes.iter().find(|pane| pane.pane_id == pane_id))
++            .is_some_and(|pane| pane.alternate_screen_active)
++    }
++
+     pub(crate) fn clipboard_image_target(
+         &self,
+     ) -> Option<crate::protocol::ClientClipboardImageTarget> {
+diff --git a/src/client/shell/tests/input.rs b/src/client/shell/tests/input.rs
+index 8b817d0a..bf3efe0f 100644
+--- a/src/client/shell/tests/input.rs
++++ b/src/client/shell/tests/input.rs
+@@ -1051,3 +1051,65 @@ fn committed_text_still_reaches_a_report_all_pane_as_text() {
+     let after = state.handle_input_bytes("\u{3042}".as_bytes());
+     assert_eq!(pane_text_commits(&after).concat(), "\u{3042}");
+ }
++
++fn direct_keys_state(direct_keys: crate::config::DirectKeysRouting) -> ClientShellState {
++    let mut config = Config::default();
++    config.keys.direct_keys = direct_keys;
++    // A direct chord stands in for focus_pane_*: Herdr toggles the sidebar when
++    // it owns the chord, and the pane receives Ctrl+T when it does not.
++    config.keys.toggle_sidebar = crate::config::BindingConfig::one("ctrl+t");
++    let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
++    state.set_snapshot(Box::new(snapshot()));
++    state.set_pane_surface(surface());
++    state
++}
++
++fn routed_to_pane(outcome: &ClientShellInput) -> bool {
++    outcome
++        .requests
++        .iter()
++        .any(|request| matches!(request, ClientMessage::ClientShellPaneInput { .. }))
++}
++
++#[test]
++fn direct_keys_stay_with_herdr_by_default() {
++    let mut state = direct_keys_state(crate::config::DirectKeysRouting::Herdr);
++
++    let outcome = state.handle_input_bytes(b"\x1b[116;5u");
++
++    assert!(state.sidebar_collapsed, "herdr must own the direct chord");
++    assert!(!routed_to_pane(&outcome));
++}
++
++#[test]
++fn auto_direct_keys_reach_a_pane_on_the_alternate_screen() {
++    let mut state = direct_keys_state(crate::config::DirectKeysRouting::Auto);
++    let mut surface = surface();
++    surface.panes[0].alternate_screen_active = true;
++    state.set_pane_surface(surface);
++
++    let outcome = state.handle_input_bytes(b"\x1b[116;5u");
++
++    assert!(!state.sidebar_collapsed, "the pane owns the direct chord");
++    assert!(routed_to_pane(&outcome));
++}
++
++#[test]
++fn auto_direct_keys_stay_with_herdr_outside_the_alternate_screen() {
++    let mut state = direct_keys_state(crate::config::DirectKeysRouting::Auto);
++
++    let outcome = state.handle_input_bytes(b"\x1b[116;5u");
++
++    assert!(state.sidebar_collapsed);
++    assert!(!routed_to_pane(&outcome));
++}
++
++#[test]
++fn prefix_still_works_while_a_pane_owns_direct_keys() {
++    let mut state = direct_keys_state(crate::config::DirectKeysRouting::Pane);
++
++    // The prefix is not a direct binding, so it must still enter prefix mode.
++    let _ = state.handle_input_bytes(b"\x1b[98;5u");
++    assert_eq!(state.mode, ClientShellMode::Prefix);
++    assert!(state.handle_input_bytes(b"\x1b[113u").detach, "prefix+q");
++}
+diff --git a/src/config.rs b/src/config.rs
+index 925423d9..85db1415 100644
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -23,10 +23,10 @@ pub use self::{
+     },
+     model::{
+         validated_sidebar_bounds, AgentPanelSortConfig, Config, ConfigReloadReport,
+-        ConfigReloadStatus, HostCursorModeConfig, NewTerminalCwdConfig, PaneBordersConfig,
+-        ShellModeConfig, SidebarCollapsedModeConfig, StatusIndicatorStyle, TabBarPositionConfig,
+-        ToastClipboardPosition, ToastConfig, ToastDelivery, ToastHerdrPosition,
+-        UpdateChannelConfig, MAX_TOAST_DELAY_SECONDS,
++        ConfigReloadStatus, DirectKeysRouting, HostCursorModeConfig, NewTerminalCwdConfig,
++        PaneBordersConfig, ShellModeConfig, SidebarCollapsedModeConfig, StatusIndicatorStyle,
++        TabBarPositionConfig, ToastClipboardPosition, ToastConfig, ToastDelivery,
++        ToastHerdrPosition, UpdateChannelConfig, MAX_TOAST_DELAY_SECONDS,
+     },
+     sidebar::{
+         AgentSidebarToken, AgentsSidebarConfig, SidebarConfig, SidebarTokenStyle,
+diff --git a/src/config/model.rs b/src/config/model.rs
+index 29802fd9..8b3a7b53 100644
+--- a/src/config/model.rs
++++ b/src/config/model.rs
+@@ -80,6 +80,20 @@ pub enum ToastHerdrPosition {
+     BottomRight,
+ }
+ 
++/// Who receives prefix-free (direct) keybindings: "herdr" keeps them, "auto"
++/// forwards them while the pane application is on the alternate screen, and
++/// "pane" always forwards them.
++#[derive(
++    Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema, Default,
++)]
++#[serde(rename_all = "snake_case")]
++pub enum DirectKeysRouting {
++    #[default]
++    Herdr,
++    Auto,
++    Pane,
++}
++
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+ #[serde(rename_all = "kebab-case")]
+ pub enum ToastClipboardPosition {
+@@ -337,6 +351,10 @@ pub struct KeysConfig {
+     /// Prefix key(s) to enter prefix mode (e.g. "ctrl+b", "f12", "esc", or an
+     /// array to accept several).
+     pub prefix: BindingConfig,
++    /// Who receives prefix-free (direct) keybindings. Saved values are
++    /// "herdr", "auto", or "pane". "auto" forwards them to the pane while its
++    /// application uses the alternate screen. Default: "herdr".
++    pub direct_keys: DirectKeysRouting,
+     /// Open keybinding help. Default: "prefix+?"
+     pub help: BindingConfig,
+     /// Open settings. Default: "prefix+s"
+@@ -469,6 +487,8 @@ pub struct KeysConfig {
+ pub(crate) struct KeysConfigOverlay {
+     #[serde(skip_serializing_if = "Option::is_none")]
+     prefix: Option<BindingConfig>,
++    #[serde(skip_serializing_if = "Option::is_none")]
++    direct_keys: Option<DirectKeysRouting>,
+     /// Additional prefix keys published for cross-version compatibility.
+     /// Older clients parse `prefix` as a single string and ignore this field;
+     /// new clients merge it into the effective prefix list.
+@@ -644,6 +664,7 @@ impl<'de> Deserialize<'de> for KeysConfig {
+             };
+         }
+ 
++        apply_field!(direct_keys);
+         apply_field!(help);
+         apply_field!(settings);
+         apply_field!(new_workspace);
+@@ -1121,6 +1142,7 @@ impl Default for KeysConfig {
+     fn default() -> Self {
+         Self {
+             prefix: BindingConfig::one("ctrl+b"),
++            direct_keys: DirectKeysRouting::default(),
+             help: BindingConfig::one("prefix+?"),
+             settings: BindingConfig::one("prefix+s"),
+             new_workspace: BindingConfig::one("prefix+shift+n"),
+@@ -1446,6 +1468,22 @@ startup_per_agent_delay_ms = 0
+         assert_eq!(config.session.startup_per_agent_delay_ms, 0);
+     }
+ 
++    #[test]
++    fn direct_keys_routing_defaults_to_herdr_and_parses_every_value() {
++        assert_eq!(Config::default().keys.direct_keys, DirectKeysRouting::Herdr);
++
++        for (value, expected) in [
++            ("herdr", DirectKeysRouting::Herdr),
++            ("auto", DirectKeysRouting::Auto),
++            ("pane", DirectKeysRouting::Pane),
++        ] {
++            let toml = format!("[keys]\ndirect_keys = \"{value}\"\n");
++            let config: Config = toml::from_str(&toml).unwrap();
++            assert_eq!(config.keys.direct_keys, expected, "value {value}");
++            assert!(config.keys.key_field_is_user_configured("direct_keys"));
++        }
++    }
++
+     #[test]
+     fn agent_panel_sort_config_parses_alias_and_defaults() {
+         assert_eq!(
+diff --git a/src/main.rs b/src/main.rs
+index f97e7e2b..47b771d5 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -143,6 +143,11 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
+ # alt+..., cmd/super, and punctuation-with-modifiers may depend on your terminal/tmux setup.
+ # prefix = "ctrl+b"
+ 
++# Who receives direct (prefix-free) bindings: "herdr" (default), "auto", or "pane".
++# "auto" hands them to the pane while its app is on the alternate screen, which is
++# how full-screen editors and pagers get their own ctrl+letter chords back.
++# direct_keys = "herdr"
++
+ # Prefix-mode actions
+ # help = "prefix+?"
+ # settings = "prefix+s"

@@ -17,8 +17,12 @@ can be handed to the pane's application instead of always staying with Herdr.
 
 - `master` tracks `upstream/master` and is never edited, so `git fetch upstream`
   always moves forward cleanly.
-- `feat/direct-keys-passthrough` is the fork's single commit, rebased onto
-  upstream on every update.
+- `feat/direct-keys-passthrough` holds the fork as two commits, rebased onto
+  upstream on every update: `feat: route direct keybindings by what the pane
+  runs` (config key plus the client gate) and `feat: let one pane override
+  direct keybinding routing` (API, CLI, pane state). The split is deliberate:
+  when upstream reshuffles the API layer, the second commit is the one that
+  conflicts, and dropping it leaves a working `direct_keys = "auto"`.
 
 The script enables `rerere`, stops on a conflicting rebase and lists the
 conflicted files, then verifies the result with the fork's own tests
@@ -27,6 +31,10 @@ schema contracts, and the config-reference and translation-parity checks. It
 then rewrites `_commit`/`pkgver`/`_zigver` in the PKGBUILD from the checkout,
 exports the patch series to `patches/`, and force-pushes the fork branch with
 `--force-with-lease`.
+
+Rebase onto a release tag instead of master with
+`HERDR_UPSTREAM_REF=upstream/v0.9.6 ./update.sh`; forward rebases onto `master`
+are the path that stays conflict-free.
 
 `patches/` is the fallback: `git am patches/*.patch` reproduces the feature on a
 clean upstream clone when a rebase is not the right tool.
