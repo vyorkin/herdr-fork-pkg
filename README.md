@@ -26,3 +26,12 @@ screen, so Neovim and pagers keep `ctrl+letter` while a plain shell still sends
 those chords to Herdr. `herdr pane direct-keys` sets the same choice per pane.
 
 Bump `_commit` in the PKGBUILD and `pkgver` together when the fork branch moves.
+
+## Upstream
+
+Herdr's `CONTRIBUTING.md` does not accept unsolicited pull requests: only
+verified maintainers and people in `.github/APPROVED_CONTRIBUTORS` may send
+implementation PRs, and everything else is closed automatically. Feature
+requests go to GitHub Discussions. So this fork stays personal unless the
+maintainers invite the change; the branch is written to be reviewable in case
+they do, with tests, docs, API schema, and a changelog entry.
