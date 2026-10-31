@@ -136,7 +136,7 @@ if [ "$BUILD" = 0 ]; then
 fi
 
 step "build package"
-(cd "$PKG_DIR" && makepkg -s --noconfirm)
+(cd "$PKG_DIR" && makepkg -s -f --noconfirm)
 package="$(ls -t "$PKG_DIR"/herdr-"$pkgver-$pkgrel"-*.pkg.tar.* | head -1)"
 echo "  $package"
 
