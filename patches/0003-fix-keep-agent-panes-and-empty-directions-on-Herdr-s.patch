@@ -1,0 +1,307 @@
+From 0ae4c42f00476577b50e888542fd53270f42eba5 Mon Sep 17 00:00:00 2001
+From: Vasiliy Yorkin <vasiliy.yorkin@gmail.com>
+Date: Sun, 1 Nov 2026 10:51:50 +0300
+Subject: [PATCH 3/3] fix: keep agent panes and empty directions on Herdr's
+ side
+
+A pane that runs a coding agent is a full-screen application too, so
+`direct_keys = "auto"` handed it ctrl+j and ctrl+l, where they mean newline
+and nothing at all: pane navigation looked broken in exactly the panes Herdr
+is built for. `auto` now forwards to the alternate screen only when no agent
+is detected for the pane.
+
+A direct focus chord with no pane in its direction also stops disappearing:
+ctrl+l in a pane with no neighbour to the right reaches the shell and clears
+the screen, the way it did before those chords were bound.
+---
+ CHANGELOG.md                                  |   2 +-
+ docs/next/CHANGELOG.md                        |   2 +-
+ .../src/content/docs/configuration.mdx        |   4 +-
+ .../website/src/content/docs/keyboard.mdx     |   2 +-
+ src/client/shell/input.rs                     |  80 +++++++++++-
+ src/client/shell/tests/input.rs               | 116 ++++++++++++++++++
+ 6 files changed, 200 insertions(+), 6 deletions(-)
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index f0b7cd3e..e8498cc9 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -3,7 +3,7 @@
+ ## Unreleased
+ 
+ ### Added
+-- `keys.direct_keys` and `herdr pane direct-keys` decide who receives prefix-free (direct) keybindings. The values are `herdr` (the default), `auto`, and `pane`. `auto` forwards direct chords to the pane while its application uses the alternate screen, so a full-screen editor keeps its own `ctrl+letter` chords without giving up direct bindings everywhere else. `herdr pane direct-keys` sets the same choice for one pane, and that override lasts as long as the pane does. The per-pane override persists for the life of the pane.
++- `keys.direct_keys` and `herdr pane direct-keys` decide who receives prefix-free (direct) keybindings. The values are `herdr` (the default), `auto`, and `pane`. `auto` forwards direct chords to the pane while its application uses the alternate screen, so a full-screen editor keeps its own `ctrl+letter` chords without giving up direct bindings everywhere else; a pane that runs a detected coding agent is excluded, because those prompts use `ctrl+j` for a newline. A direct focus chord with no pane in its direction reaches the pane instead of being swallowed, so `ctrl+l` still clears the screen. `herdr pane direct-keys` sets the same choice for one pane, and that override lasts as long as the pane does. The per-pane override persists for the life of the pane.
+ 
+ ## [0.9.5] - 2026-10-14
+ 
+diff --git a/docs/next/CHANGELOG.md b/docs/next/CHANGELOG.md
+index f0b7cd3e..e8498cc9 100644
+--- a/docs/next/CHANGELOG.md
++++ b/docs/next/CHANGELOG.md
+@@ -3,7 +3,7 @@
+ ## Unreleased
+ 
+ ### Added
+-- `keys.direct_keys` and `herdr pane direct-keys` decide who receives prefix-free (direct) keybindings. The values are `herdr` (the default), `auto`, and `pane`. `auto` forwards direct chords to the pane while its application uses the alternate screen, so a full-screen editor keeps its own `ctrl+letter` chords without giving up direct bindings everywhere else. `herdr pane direct-keys` sets the same choice for one pane, and that override lasts as long as the pane does. The per-pane override persists for the life of the pane.
++- `keys.direct_keys` and `herdr pane direct-keys` decide who receives prefix-free (direct) keybindings. The values are `herdr` (the default), `auto`, and `pane`. `auto` forwards direct chords to the pane while its application uses the alternate screen, so a full-screen editor keeps its own `ctrl+letter` chords without giving up direct bindings everywhere else; a pane that runs a detected coding agent is excluded, because those prompts use `ctrl+j` for a newline. A direct focus chord with no pane in its direction reaches the pane instead of being swallowed, so `ctrl+l` still clears the screen. `herdr pane direct-keys` sets the same choice for one pane, and that override lasts as long as the pane does. The per-pane override persists for the life of the pane.
+ 
+ ## [0.9.5] - 2026-10-14
+ 
+diff --git a/docs/next/website/src/content/docs/configuration.mdx b/docs/next/website/src/content/docs/configuration.mdx
+index 5df8c72d..72ad6bea 100644
+--- a/docs/next/website/src/content/docs/configuration.mdx
++++ b/docs/next/website/src/content/docs/configuration.mdx
+@@ -184,7 +184,9 @@ If you have old custom keybindings and want the new defaults, run `herdr config
+ direct_keys = "auto"
+ ```
+ 
+-`auto` is the useful middle ground: full-screen editors and pagers such as Vim, Neovim, `less`, and `htop` switch to the alternate screen, so they get their own chords back, while shells keep sending direct bindings to Herdr. Panes that never leave the normal screen, such as a plain shell, keep Herdr's behavior. Pressing the prefix always reaches Herdr regardless of this setting.
++`auto` is the useful middle ground: full-screen editors and pagers such as Vim, Neovim, `less`, and `htop` switch to the alternate screen, so they get their own chords back, while shells keep sending direct bindings to Herdr. Panes that never leave the normal screen, such as a plain shell, keep Herdr's behavior. A pane that runs a detected coding agent is excluded even when it is on the alternate screen, because those prompts use `ctrl+j` and `ctrl+l` themselves. Pressing the prefix always reaches Herdr regardless of this setting.
++
++A direct focus binding with no pane in its direction has nothing to do, so that key goes to the pane instead of disappearing: `ctrl+l` clears the screen in a pane with no neighbour to the right, and `ctrl+j` inserts a newline in the bottom pane.
+ 
+ One pane can override the config value:
+ 
+diff --git a/docs/next/website/src/content/docs/keyboard.mdx b/docs/next/website/src/content/docs/keyboard.mdx
+index f0de3920..12e742ca 100644
+--- a/docs/next/website/src/content/docs/keyboard.mdx
++++ b/docs/next/website/src/content/docs/keyboard.mdx
+@@ -139,4 +139,4 @@ A few `ctrl+alt` chords are taken elsewhere. Avoid these:
+ 
+ If a direct chord does nothing, your terminal or desktop environment consumed it before Herdr could see it. Rebind either side: free the chord in the terminal's settings, or pick another chord in Herdr.
+ 
+-A direct chord belongs to Herdr, so the program inside the pane never sees it. That collides with full-screen editors that use `ctrl+letter` themselves. Set `keys.direct_keys = "auto"` to hand direct chords to a pane while its application is on the alternate screen, or use `herdr pane direct-keys --current --direct-keys pane` to do it for one pane. The prefix always reaches Herdr either way.
++A direct chord belongs to Herdr, so the program inside the pane never sees it. That collides with full-screen editors that use `ctrl+letter` themselves. Set `keys.direct_keys = "auto"` to hand direct chords to a pane while its application is on the alternate screen; a pane that runs a coding agent keeps Herdr's chords, and a pane can opt out on its own with `herdr pane direct-keys --current --direct-keys pane`. A direct focus chord with no pane in that direction goes to the pane, so `ctrl+l` still clears the screen. The prefix always reaches Herdr either way.
+diff --git a/src/client/shell/input.rs b/src/client/shell/input.rs
+index e950ca1f..01ef33a7 100644
+--- a/src/client/shell/input.rs
++++ b/src/client/shell/input.rs
+@@ -674,8 +674,10 @@ impl ClientShellState {
+                     if let Some(binding) =
+                         crate::input::resolve_direct_binding(&self.config.keybinds.keybinds, key)
+                     {
+-                        self.record_binding(binding, outcome);
+-                        return None;
++                        if !self.direct_binding_has_no_target(&binding) {
++                            self.record_binding(binding, outcome);
++                            return None;
++                        }
+                     }
+                 }
+                 if self.config.keybinds.matches_prefix(key) {
+@@ -1109,12 +1111,70 @@ impl ClientShellState {
+         match routing {
+             crate::config::DirectKeysRouting::Herdr => false,
+             crate::config::DirectKeysRouting::Pane => true,
++            // `auto` exists for editors and pagers, which take over the whole
++            // screen and expect their own ctrl+letter chords. A pane that runs a
++            // detected agent is a full-screen app too, but its prompt is built
++            // from those same chords (ctrl+j is a newline there), so Herdr keeps
++            // pane navigation instead.
+             crate::config::DirectKeysRouting::Auto => {
+                 self.focused_pane_uses_alternate_screen(&pane_id)
++                    && !self.focused_pane_has_agent(&pane_id)
+             }
+         }
+     }
+ 
++    fn focused_pane_has_agent(&self, pane_id: &str) -> bool {
++        self.snapshot.as_deref().is_some_and(|snapshot| {
++            snapshot
++                .agents
++                .iter()
++                .any(|agent| agent.pane_id == pane_id && agent.agent.is_some())
++        })
++    }
++
++    /// A direct focus binding with no pane in its direction has nothing to act
++    /// on, so the chord belongs to the pane instead of disappearing: ctrl+l
++    /// clears the screen in a pane with no neighbour to the right.
++    fn direct_binding_has_no_target(&self, binding: &crate::input::KeybindMatch) -> bool {
++        let crate::input::KeybindMatch::Action(action) = binding else {
++            return false;
++        };
++        let direction = match action {
++            crate::input::KeybindAction::FocusPaneLeft => crate::api::schema::PaneDirection::Left,
++            crate::input::KeybindAction::FocusPaneRight => crate::api::schema::PaneDirection::Right,
++            crate::input::KeybindAction::FocusPaneUp => crate::api::schema::PaneDirection::Up,
++            crate::input::KeybindAction::FocusPaneDown => crate::api::schema::PaneDirection::Down,
++            _ => return false,
++        };
++        let Some(surface) = self.pane_surface.as_ref() else {
++            return false;
++        };
++        let Some(focused) = surface.panes.iter().find(|pane| pane.focused) else {
++            return false;
++        };
++        let has_neighbor = surface.panes.iter().any(|other| {
++            if other.pane_id == focused.pane_id {
++                return false;
++            }
++            let (focus, other) = (focused.rect, other.rect);
++            match direction {
++                crate::api::schema::PaneDirection::Left => {
++                    other.x + other.width <= focus.x && spans_overlap_y(focus, other)
++                }
++                crate::api::schema::PaneDirection::Right => {
++                    other.x >= focus.x + focus.width && spans_overlap_y(focus, other)
++                }
++                crate::api::schema::PaneDirection::Up => {
++                    other.y + other.height <= focus.y && spans_overlap_x(focus, other)
++                }
++                crate::api::schema::PaneDirection::Down => {
++                    other.y >= focus.y + focus.height && spans_overlap_x(focus, other)
++                }
++            }
++        });
++        !has_neighbor
++    }
++
+     fn focused_pane_uses_alternate_screen(&self, pane_id: &str) -> bool {
+         self.pane_surface
+             .as_ref()
+@@ -1219,3 +1279,19 @@ impl ClientShellState {
+         }
+     }
+ }
++
++/// Two side-by-side panes are neighbours only when their rows overlap.
++fn spans_overlap_y(
++    left: crate::protocol::SurfaceRect,
++    right: crate::protocol::SurfaceRect,
++) -> bool {
++    left.y < right.y + right.height && right.y < left.y + left.height
++}
++
++/// Two stacked panes are neighbours only when their columns overlap.
++fn spans_overlap_x(
++    left: crate::protocol::SurfaceRect,
++    right: crate::protocol::SurfaceRect,
++) -> bool {
++    left.x < right.x + right.width && right.x < left.x + left.width
++}
+diff --git a/src/client/shell/tests/input.rs b/src/client/shell/tests/input.rs
+index 0ca335f8..5fa861a3 100644
+--- a/src/client/shell/tests/input.rs
++++ b/src/client/shell/tests/input.rs
+@@ -1139,3 +1139,119 @@ fn prefix_still_works_while_a_pane_owns_direct_keys() {
+     assert_eq!(state.mode, ClientShellMode::Prefix);
+     assert!(state.handle_input_bytes(b"\x1b[113u").detach, "prefix+q");
+ }
++
++fn direct_focus_state(direct_keys: crate::config::DirectKeysRouting) -> ClientShellState {
++    let mut config = Config::default();
++    config.keys.direct_keys = direct_keys;
++    config.keys.focus_pane_down = crate::config::BindingConfig::one("ctrl+j");
++    config.keys.focus_pane_right = crate::config::BindingConfig::one("ctrl+l");
++    let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
++    state.set_snapshot(Box::new(snapshot()));
++    state.set_pane_surface(surface());
++    state
++}
++
++fn mark_alternate_screen(state: &mut ClientShellState) {
++    let mut surface = state.pane_surface.clone().unwrap_or_else(surface);
++    surface.panes[0].alternate_screen_active = true;
++    state.set_pane_surface(surface);
++}
++
++fn add_agent_to_focused_pane(state: &mut ClientShellState) {
++    let mut snapshot = snapshot();
++    snapshot.agents.push(crate::protocol::ClientShellAgent {
++        pane_id: "pane_1".into(),
++        workspace_id: "ws_1".into(),
++        tab_id: "tab_1".into(),
++        name: Some("pi".into()),
++        display_agent: Some("pi".into()),
++        agent: Some("pi".into()),
++        title: None,
++        terminal_title: None,
++        terminal_title_stripped: None,
++        agent_status: crate::api::schema::AgentStatus::Idle,
++        state_change_seq: 0,
++        state_labels: Vec::new(),
++        tokens: Vec::new(),
++        focused: true,
++    });
++    state.set_snapshot(Box::new(snapshot));
++}
++
++fn add_pane_below(state: &mut ClientShellState) {
++    let mut surface = surface();
++    surface.panes[0].rect.height = 1;
++    surface.panes[0].inner_rect.height = 1;
++    let mut below = surface.panes[0].clone();
++    below.pane_id = "pane_2".into();
++    below.focused = false;
++    below.rect.y = 1;
++    below.inner_rect.y = 1;
++    surface.panes.push(below);
++    state.set_pane_surface(surface);
++
++    let mut snapshot = snapshot();
++    let mut below = snapshot.panes[0].clone();
++    below.pane_id = "pane_2".into();
++    below.focused = false;
++    snapshot.panes.push(below);
++    state.set_snapshot(Box::new(snapshot));
++}
++
++#[test]
++fn auto_keeps_direct_focus_chords_in_a_pane_that_runs_an_agent() {
++    // A full-screen agent prompt uses ctrl+j for a newline, so `auto` must not
++    // hand pane navigation to it.
++    let mut state = direct_focus_state(crate::config::DirectKeysRouting::Auto);
++    add_pane_below(&mut state);
++    mark_alternate_screen(&mut state);
++    add_agent_to_focused_pane(&mut state);
++
++    let outcome = state.handle_input_bytes(b"\x1b[106;5u");
++
++    assert!(!routed_to_pane(&outcome), "herdr keeps ctrl+j");
++    assert!(
++        outcome
++            .actions
++            .iter()
++            .any(|action| matches!(action, ClientShellAction::Endpoint { .. })),
++        "ctrl+j must ask the server to focus the pane below"
++    );
++}
++
++#[test]
++fn auto_still_hands_direct_focus_chords_to_an_editor() {
++    let mut state = direct_focus_state(crate::config::DirectKeysRouting::Auto);
++    add_pane_below(&mut state);
++    mark_alternate_screen(&mut state);
++
++    let outcome = state.handle_input_bytes(b"\x1b[106;5u");
++
++    assert!(routed_to_pane(&outcome), "an editor keeps ctrl+j");
++}
++
++#[test]
++fn a_direct_focus_chord_without_a_neighbour_reaches_the_pane() {
++    // One pane, nothing to the right: ctrl+l must clear the screen instead of
++    // being swallowed by Herdr.
++    let mut state = direct_focus_state(crate::config::DirectKeysRouting::Herdr);
++
++    let outcome = state.handle_input_bytes(b"\x1b[108;5u");
++
++    assert!(routed_to_pane(&outcome));
++    assert!(outcome.actions.is_empty());
++}
++
++#[test]
++fn a_direct_focus_chord_with_a_neighbour_stays_with_herdr() {
++    let mut state = direct_focus_state(crate::config::DirectKeysRouting::Herdr);
++    add_pane_below(&mut state);
++
++    let outcome = state.handle_input_bytes(b"\x1b[106;5u");
++
++    assert!(!routed_to_pane(&outcome));
++    assert!(outcome
++        .actions
++        .iter()
++        .any(|action| matches!(action, ClientShellAction::Endpoint { .. })));
++}

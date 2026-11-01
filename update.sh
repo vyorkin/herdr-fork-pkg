@@ -143,8 +143,15 @@ echo "  $package"
 [ "$INSTALL" = 1 ] || exit 0
 
 step "install package"
-sudo -n true 2>/dev/null || die "sudo needs a password here; run: sudo pacman -U $package"
-sudo pacman -U --noconfirm "$package"
+# sudo without a password when the timestamp is cached, otherwise through
+# SUDO_ASKPASS so the same command works on a host that wants one.
+if [ -n "${SUDO_ASKPASS:-}" ]; then
+  sudo -A -v || die "sudo -A failed; check SUDO_ASKPASS"
+else
+  sudo -n true 2>/dev/null ||
+    die "sudo needs a password here; set SUDO_ASKPASS or run: sudo pacman -U $package"
+fi
+sudo "${SUDO_ASKPASS:+-A}" pacman -U --noconfirm "$package"
 
 [ "$RESTART" = 1 ] || {
   echo

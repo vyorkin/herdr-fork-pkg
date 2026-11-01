@@ -11,7 +11,7 @@
 
 pkgname=herdr
 pkgver=0.9.5.fork.1
-pkgrel=2
+pkgrel=3
 pkgdesc="Herdr terminal workspace manager for AI coding agents (vyorkin fork: direct key passthrough)"
 arch=('x86_64' 'aarch64')
 url="https://github.com/vyorkin/herdr-fork"
@@ -24,7 +24,7 @@ options=('!debug' '!lto')
 
 # Full commit that carries the feature. Bump it and pkgver together;
 # GitHub archives unpack into herdr-fork-<full sha>.
-_commit=b518eeaafce6cc8e8bd29442030ad261de630b0b
+_commit=0ae4c42f00476577b50e888542fd53270f42eba5
 _zigver=0.16.0
 source=("herdr-fork-$_commit.tar.gz::$url/archive/$_commit.tar.gz")
 source_x86_64=("zig-x86_64-linux-$_zigver.tar.xz::https://ziglang.org/download/$_zigver/zig-x86_64-linux-$_zigver.tar.xz")

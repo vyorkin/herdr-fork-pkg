@@ -1,7 +1,7 @@
 From b518eeaafce6cc8e8bd29442030ad261de630b0b Mon Sep 17 00:00:00 2001
 From: Vasiliy Yorkin <vasiliy.yorkin@gmail.com>
 Date: Sat, 31 Oct 2026 15:05:21 +0300
-Subject: [PATCH 2/2] feat: let one pane override direct keybinding routing
+Subject: [PATCH 2/3] feat: let one pane override direct keybinding routing
 
 keys.direct_keys covers every pane; a pane that needs the other behaviour
 needs a per-pane escape hatch. `herdr pane direct-keys` sets it, served by a
